@@ -1,0 +1,154 @@
+#!/usr/bin/env python
+#
+# Show results from nmap results, optionally matching ports or hosts given
+#
+
+import os,sys,logging
+
+from scanreports.script import prepare,initialize,error
+from scanreports import ReportParserError
+from scanreports.nmap import NMAPSummary
+
+SUPPORTED_PROTOCOLS = [ 'tcp','udp']
+
+LOGFORMAT='%(levelname)s %(message)s'
+
+parser = prepare(sys.argv)
+parser.add_option('-p','--ports',dest='ports',type='string',help='Match these ports')
+parser.add_option('-o','--protocols',dest='protocols',type='string',help='Match only ports with this protocol')
+parser.add_option('-s','--status',dest='status',type='string',help='Match only ports with this status')
+parser.add_option('-H','--host',dest='host',type='string',help='Match only this host')
+parser.add_option('-q','--quiet',dest='quiet',action='store_true',help='Show minimal info')
+(opts,args) = initialize(parser)
+
+log = logging.getLogger('console')
+
+nms = NMAPSummary()
+for f in args:
+    if not os.path.isfile(f):
+        sys.exit(error('%s\n'%'No such file: %s' % f))
+    try:
+        nms.read(f)
+    except ReportParserError,e:
+        log.info('%s\n'%e)
+        continue
+
+show_ports = []
+if opts.ports:
+    try:
+        show_ports = map(lambda p: int(p), opts.ports.split(','))
+    except ValueError:
+        sys.stderr.write('%s\n'%'Invalid ports argument: %s' % opts.ports)
+        sys.exit(1)
+
+if opts.protocols:
+    protocols = []
+    for p in [p.lower() for p in opts.protocols.split(',')]:
+        if p not in SUPPORTED_PROTOCOLS:
+            sys.stderr.write(
+                '%s\n'%'Invalid protocols argument: %s' % opts.protocols
+            )
+            sys.exit(1)
+        protocols.append(p)
+else:
+    protocols = SUPPORTED_PROTOCOLS
+
+try:
+    for host in nms.hosts:
+        if opts.host:
+            if len(filter(lambda a: a['addr'] == opts.host, host.addresses)) == 0:
+                continue
+
+        ports = []
+        if 'tcp' in protocols:
+            tcp_ports = []
+            if opts.ports is not None:
+                tcp_ports += filter(lambda p: int(p) in show_ports, host.tcp_ports)
+            else:
+                tcp_ports += host.tcp_ports
+            for tp in tcp_ports:
+                found = False
+                for p in ports:
+                    if p['protocol'] == 'tcp' and int(tp) == int(p):
+                        if tp['service'] is not None and tp['service'].has_key('product'):
+                            p['service']['product'] = tp['service']['product']
+                        found = True
+                if not found:
+                    ports.append(tp)
+
+        if 'udp' in protocols:
+            udp_ports = []
+            if opts.ports is not None:
+                udp_ports += filter(lambda p: int(p) in show_ports, host.udp_ports)
+            else:
+                udp_ports += host.udp_ports
+            for up in udp_ports:
+                found = False
+                for p in ports:
+                    if p['protocol'] == 'udp' and int(up) == int(p):
+                        if up['service'].has_key('product'):
+                            p['service']['product'] = up['service']['product']
+                        found = True
+                if not found:
+                    ports.append(up)
+
+        if len(ports) == 0:
+            continue
+
+        if opts.quiet and len(ports) == 1:
+            print ','.join([a['addr'] for a in host.ipv4_addresses])
+            continue
+
+        ipv4 = None
+        for addr in host.addresses:
+            if addr['addrtype'] != 'ipv4':
+                continue
+            ipv4 = addr['addr']
+            break
+        if len(host.osinfo) == 1:
+            osi = host.osinfo[0]
+            try:
+                osi = '%s %s %s' % ( osi['osfamily'],osi['vendor'],osi['osgen'] )
+            except KeyError:
+                osi = '' 
+        else:
+            osi = ''
+
+        fmt = '%-5s %s\t%s\t%s\t%s' 
+        if opts.status:
+            matchports = []
+            for p in ports:
+                state = p['state'] is not None and p['state'] or 'unknown'
+                if state != opts.status:
+                    continue
+                matchports += p
+            if len(matchports) == 0:
+                continue
+            print '%s\t%s' % (ipv4,osi)
+            if opts.verbose:
+                print fmt % ('Port','Protocol','State','Service','Version')
+        else:
+            print '%s\t%s' % (ipv4,osi)
+            if opts.verbose:
+                print fmt % ('Port','Protocol','State','Service','Version')
+
+        for p in ports:
+            state = p['state'] is not None and p['state'] or 'unknown'
+            if opts.status and state != opts.status:
+                continue
+            if p['service'] is not None:
+                service = p['service'].name
+                try:
+                    version = p['service']['product']
+                except KeyError:
+                    version = ''
+            else:
+                service = ''
+                version = ''
+            print fmt % (int(p), p['protocol'].upper(), state, service, version)   
+            #print p.items()
+        print 
+
+except (IOError,KeyboardInterrupt):
+    sys.exit(0)
+
