@@ -1,0 +1,79 @@
+#!/usr/bin/env python
+#
+# Show results from mbsa reports
+#
+
+import os,sys,logging
+
+from seine.address import IPv4Address,IPv6Address
+
+from scanreports.script import prepare,initialize,error
+from scanreports import ReportParserError
+from scanreports.nessus import NessusXMLReport
+
+DEFAULT_FILTERED_PLUGINS = [0]
+SEVERITY_NAMES = ['Info','Low','Medium','High']
+
+REPORT_FIELD_ORDER = [
+    'synopsis',
+    'exploitability_ease',
+    'solution',
+    'description',
+    'cve',
+    'xref',
+    'see_also',
+]
+
+parser = prepare(sys.argv)
+parser.add_option('-a','--addresses',help='Only show given addresses from report')
+parser.add_option('-f','--filter-plugins',help='File listing filtered plugin IDs')
+parser.add_option('-g','--group-by-host',action='store_true',help='Group Findings by Host')
+parser.add_option('-l','--list-plugin-ids',action='store_true',help='List plugin IDs with data')
+(opts,args) = initialize(parser)
+log = logging.getLogger('console')
+
+if len(args) == 0:
+    error('No report to parse given!')
+    sys.exit(error(parser.get_usage()))
+
+try:
+    nms = NessusXMLReport(args[0])
+
+    if opts.filter_plugins:
+        filtered_ids = set(DEFAULT_FILTERED_PLUGINS)
+        nms.resultset.filter_pluginlist(opts.filter_plugins,filtered_ids)
+
+    if opts.addresses: 
+        nms.resultset.match_addresslist(opts.addresses.split(','))
+
+    if opts.list_plugin_ids:
+        id_details = {}
+        for r in nms.resultset:
+            if r.pluginID in id_details.keys():
+                continue
+            id_details[r.pluginID] = r.pluginName
+        for pid in sorted(id_details.keys()):
+            print '%-6d %s' % (pid,id_details[pid])
+        sys.exit(0)
+
+    if opts.group_by_host:
+        nms.resultset.order_by('-severity','address')
+    else:
+        nms.resultset.order_by('address','-severity')
+
+    for r in nms.resultset:
+        print SEVERITY_NAMES[r.severity],r.pluginName
+        if not opts.group_by_host:
+            print 'Hosts\t%s' % '\t'.join(nms.resultset.pluginid_hosts(r.pluginID))
+        for k in REPORT_FIELD_ORDER:
+            if not r.has_key(k) or r[k] is None: 
+                continue
+            if type(r[k]) == list:
+                print '%s\t%s' % (k,' '.join(r[k]))
+            else:
+                print '%s\t%s' % (k,r[k])
+    log.debug(nms.resultset.counters())
+
+except ReportParserError,e:
+    sys.exit(error(e))
+
