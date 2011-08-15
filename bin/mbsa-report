@@ -12,12 +12,20 @@ from scanreports.mbsa import MBSAReport
 FILTERED_RESULTNAMES = ['IIS Status']
 
 parser = prepare(sys.argv)
-parser.set_defaults(**{'severity_limit':3})
+parser.set_usage("""%s [options] <report.mbsa>
+
+Parses the MBSA XML report and shows some details about each finding.
+You can give multiple report files as parameters.""" % 
+    os.path.basename(sys.argv[0])
+)
 parser.add_option('-r','--rows',action='store_true',help='Show detailed rows')
 parser.add_option('-s','--severity-limit',type='int',help='Limit severity (1-6)')
 (opts,args) = initialize(parser)
 
 log = logging.getLogger('console')
+
+if len(args) == 0:  
+    sys.exit(error(parser.get_usage()))
 
 for target in args:
     if not os.path.isfile(target):

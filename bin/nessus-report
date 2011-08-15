@@ -60,6 +60,12 @@ REPORT_FIELD_TITLES = {
 }
 
 parser = prepare(sys.argv)
+parser.set_usage("""%s [options] <nessus-xml-report>
+
+Processes the nessus XML report (only one!) given on command line and outputs
+details from the report according to given options.""" % 
+    os.path.basename(sys.argv[0])
+)   
 parser.add_option('-a','--addresses',help='Only show given addresses from report')
 parser.add_option('-o','--output-html',help='Write output to HTML file')
 parser.add_option('-O','--output-csv',help='Write output to CSV file')
@@ -70,7 +76,6 @@ parser.add_option('-l','--list-plugin-ids',action='store_true',help='List plugin
 log = logging.getLogger('console')
 
 if len(args) == 0:
-    error('No report to parse given!')
     sys.exit(error(parser.get_usage()))
 
 class filewriter(object):

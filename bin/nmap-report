@@ -11,17 +11,23 @@ from scanreports.nmap import NMAPSummary
 
 SUPPORTED_PROTOCOLS = [ 'tcp','udp']
 
-LOGFORMAT='%(levelname)s %(message)s'
-
 parser = prepare(sys.argv)
+parser.set_usage("""%s [options] <nmap-xml-reports>
+
+Parses the NMAP XML report files given on command line and shows a summary of 
+the findings, merged to one list instead of each report separately.""" % 
+    os.path.basename(sys.argv[0])
+)
 parser.add_option('-p','--ports',dest='ports',type='string',help='Match these ports')
 parser.add_option('-o','--protocols',dest='protocols',type='string',help='Match only ports with this protocol')
 parser.add_option('-s','--status',dest='status',type='string',help='Match only ports with this status')
 parser.add_option('-H','--host',dest='host',type='string',help='Match only this host')
 parser.add_option('-q','--quiet',dest='quiet',action='store_true',help='Show minimal info')
 (opts,args) = initialize(parser)
-
 log = logging.getLogger('console')
+
+if len(args)==0:
+    sys.exit(error(parser.get_usage()))
 
 nms = NMAPSummary()
 for f in args:
