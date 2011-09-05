@@ -78,6 +78,11 @@ log = logging.getLogger('console')
 if len(args) == 0:
     sys.exit(error(parser.get_usage()))
 
+def id_details_cmp(data,x,y):
+    if data[x][0] != data[y][0]:
+        return cmp(data[x][0],data[y][0])
+    return cmp(data[x][1],data[y][1])
+
 class filewriter(object):
     def __init__(self,opts):
         self.fd = None
@@ -164,22 +169,31 @@ try:
         for r in nms.resultset:
             if r.pluginID in id_details.keys():
                 continue
-            id_details[r.pluginID] = r.pluginName
-        for pid in sorted(id_details.keys()):
-            print '%-6d %s' % (pid,id_details[pid])
+            id_details[r.pluginID] = [r.severity,r.pluginName]
+        # Sort by severity
+        id_keys_sorted = sorted(id_details.keys(),
+            lambda x,y: id_details_cmp(id_details,x,y)
+        )
+        for pid in id_keys_sorted:
+            severity,name = id_details[pid]
+            print '%-6d %s %s' % (pid,severity,name)
         sys.exit(0)
 
     if opts.group_by_host:
         nms.resultset.order_by('address','-severity')
     else:
-        nms.resultset.order_by('-severity','address')
+        nms.resultset.order_by('-severity','-pluginID')
 
+    last_id = None
     for r in nms.resultset:
+        if last_id is not None and last_id == r.pluginID:
+            continue
+        last_id = r.pluginID
         writer.header(r.severity,r.pluginName,plugin_id=r.pluginID)
-        if not opts.group_by_host:
-            writer.msg('hosts',nms.resultset.pluginid_hosts(r.pluginID))
-        else:
+        if opts.group_by_host:
             writer.msg('hosts',[r.address.ipaddress])
+        else:
+            writer.msg('hosts',nms.resultset.pluginid_hosts(r.pluginID))
         for k in REPORT_FIELD_ORDER:
             if not r.has_key(k) or r[k] is None: 
                 continue

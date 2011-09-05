@@ -224,12 +224,11 @@ class NessusTargetResultItem(dict):
                     raise ReportParserErro('Multiple targets for %s' % n.tag)
                 self[n.tag] = n.text
 
-    
             else:
                 raise ReportParserError('Unprocessed report field %s: %s' % (
                     n.tag,n.text
                 ))
-                
+
         if self.has_key('xref'):
             xref_urls = []
             for value in self['xref']:
