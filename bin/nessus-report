@@ -147,8 +147,14 @@ try:
     nms = NessusXMLReport(args[0])
 
     if opts.filter_plugins:
-        filtered_ids = set(DEFAULT_FILTERED_PLUGINS)
-        nms.resultset.filter_pluginlist(opts.filter_plugins,filtered_ids)
+        nms.resultset.filter_pluginlist(
+            opts.filter_plugins,
+            set(DEFAULT_FILTERED_PLUGINS)
+        )
+    else:
+        nms.resultset.filter(
+            lambda x: x.pluginID not in set(DEFAULT_FILTERED_PLUGINS)
+        )
 
     if opts.addresses: 
         nms.resultset.match_addresslist(opts.addresses.split(','))

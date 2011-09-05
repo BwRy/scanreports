@@ -290,7 +290,9 @@ class NessusResultSet(list):
         self.extend([d[-1] for d in decorated])
 
     def pluginid_hosts(self,pid):
-        return [r.address.ipaddress for r in self if r.pluginID == pid]
+        return [h.ipaddress for h in sorted(
+            set(r.address for r in self if r.pluginID == pid) 
+        )]
 
     def filter(self,fn):
         for r in list(self):
