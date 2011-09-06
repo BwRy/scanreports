@@ -3,7 +3,7 @@
 Parser for nessus XML report files
 """
 
-import os,sys,time,re,decimal
+import os,logging,sys,time,re,decimal
 from lxml import etree
 
 from scanreports import ReportParserError
@@ -267,16 +267,20 @@ class NessusPluginList(object):
         self.node = node
 
 class NessusResultSet(list):
+    def __init__(self):
+        self.log = logging.getLogger('modules')
 
     def __sortkeys__(self,*argv):
         return lambda mapping: tuple(-mapping[name[1:]] if name.startswith('-') else mapping[name] for name in argv)
 
     def load(self,reports):
         for source in reports:
+            self.log.debug('Merging report: %s' % source)
             for r in [result for report in source for host in report for result in host]:
                 self.append(r)
 
     def order_by(self,*argv):
+        self.log.debug('Ordering results')
         decorated = [(
             [-result[k[1:]] if k.startswith('-') else result[k] for k in argv],
             index,
@@ -287,14 +291,21 @@ class NessusResultSet(list):
         self.extend([d[-1] for d in decorated])
 
     def pluginid_hosts(self,pid):
+        self.log.debug('Collecting target host addresses for plugin %s' % pid)
         return [h.ipaddress for h in sorted(
             set(r.address for r in self if r.pluginID == pid) 
         )]
 
     def filter(self,fn):
-        for r in list(self):
+        self.log.debug('Filtering %d results' % len(self))
+        total=len(self)
+        processed=0
+        for r in self:
+            processed+=1
             if not fn(r): 
                 self.remove(r)
+            if processed%1000==0:
+                self.log.debug('Processed: %d/%d results' % (processed,total))
 
     def counters(self):
         values = dict([(r,0) for r in range(0,4)]) 
@@ -324,6 +335,7 @@ class NessusResultSet(list):
         self.filter(lambda x: x.pluginID not in filtered_ids)
 
     def match_addresslist(self,values):
+        self.log.debug('Matching address list to %s' % values)
         addresses = []
         for address in values:
             try:
