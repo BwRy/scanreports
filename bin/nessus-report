@@ -9,7 +9,7 @@ from seine.address import IPv4Address,IPv6Address
 
 from scanreports.script import prepare,initialize,error
 from scanreports import ReportParserError
-from scanreports.nessus import NessusXMLReport
+from scanreports.nessus import NessusXMLReport,NessusResultSet
 
 HTML_OUTPUT_HEADER = """<html>
 <head><title>Nessus Report %(title)s</title></head>
@@ -84,7 +84,8 @@ def id_details_cmp(data,x,y):
     return cmp(data[x][1],data[y][1])
 
 class filewriter(object):
-    def __init__(self,opts):
+    def __init__(self,title,opts):
+        self.title = title
         self.fd = None
         self.path = None
         self.format = format
@@ -95,9 +96,9 @@ class filewriter(object):
         if opts.output_html:
             self.path = opts.output_html
             self.format = 'html'
-        self.open()
+        self.open(title=self.title)
 
-    def open(self):
+    def open(self,title=''):
         if self.path is None: 
             return
         self.close()
@@ -105,9 +106,9 @@ class filewriter(object):
             self.fd = open(self.path,'w')
             if self.format == 'html':
                 if opts.group_by_host:
-                    self.fd.write(HTML_OUTPUT_HEADER % { 'title': 'Sorted by Address and Severity' })
+                    self.fd.write(HTML_OUTPUT_HEADER % { 'title': '%s Sorted by Address and Severity' % title })
                 else:
-                    self.fd.write(HTML_OUTPUT_HEADER % { 'title': 'Sorted by Severity and Address' })
+                    self.fd.write(HTML_OUTPUT_HEADER % { 'title': '%s Sorted by Severity and Address' % title })
         except OSError,(ecode,emsg):
             raise ReportParserError('Error opening %s: %s' % (self.path,emsg))
         except OSError,(ecode,emsg):
@@ -148,25 +149,32 @@ class filewriter(object):
             print '%s' % '\t'.join(args)
 
 try:
-    writer = filewriter(opts)
-    nms = NessusXMLReport(args[0])
+    reports = []
+    for report in args:
+        log.debug('Loading: %s' % report)
+        reports.append(NessusXMLReport(report))
+
+    log.debug('Merging reports')
+    nms = NessusResultSet()
+    nms.load(reports)
+    writer = filewriter(title='',opts=opts)
 
     if opts.filter_plugins:
-        nms.resultset.filter_pluginlist(
+        nms.filter_pluginlist(
             opts.filter_plugins,
             set(DEFAULT_FILTERED_PLUGINS)
         )
     else:
-        nms.resultset.filter(
+        nms.filter(
             lambda x: x.pluginID not in set(DEFAULT_FILTERED_PLUGINS)
         )
 
     if opts.addresses: 
-        nms.resultset.match_addresslist(opts.addresses.split(','))
+        nms.match_addresslist(opts.addresses.split(','))
 
     if opts.list_plugin_ids:
         id_details = {}
-        for r in nms.resultset:
+        for r in nms:
             if r.pluginID in id_details.keys():
                 continue
             id_details[r.pluginID] = [r.severity,r.pluginName]
@@ -180,12 +188,12 @@ try:
         sys.exit(0)
 
     if opts.group_by_host:
-        nms.resultset.order_by('address','-severity')
+        nms.order_by('address','-severity')
     else:
-        nms.resultset.order_by('-severity','-pluginID')
+        nms.order_by('-severity','-pluginID')
 
     last_id = None
-    for r in nms.resultset:
+    for r in nms:
         if last_id is not None and last_id == r.pluginID:
             continue
         last_id = r.pluginID
@@ -193,7 +201,7 @@ try:
         if opts.group_by_host:
             writer.msg('hosts',[r.address.ipaddress])
         else:
-            writer.msg('hosts',nms.resultset.pluginid_hosts(r.pluginID))
+            writer.msg('hosts',nms.pluginid_hosts(r.pluginID))
         for k in REPORT_FIELD_ORDER:
             if not r.has_key(k) or r[k] is None: 
                 continue
@@ -201,7 +209,7 @@ try:
                 writer.msg(k,' '.join(r[k]))
             else:
                 writer.msg(k,r[k])
-    log.debug(nms.resultset.counters())
+    log.debug(nms.counters())
     writer.close()
 
 except ReportParserError,e:

@@ -71,10 +71,6 @@ class NessusXMLReport(list):
             # May raise ReportParserError 
             self.append(NessusReport(self,node))
 
-        self.resultset = NessusResultSet(
-            [result for report in self for host in report for result in host]
-        )
-
     def __str__(self):
         return '%s: %d reports' % (self.path,len(self))
 
@@ -271,12 +267,14 @@ class NessusPluginList(object):
         self.node = node
 
 class NessusResultSet(list):
-    def __init__(self,results):
-        for r in results:
-            self.append(r)
 
     def __sortkeys__(self,*argv):
         return lambda mapping: tuple(-mapping[name[1:]] if name.startswith('-') else mapping[name] for name in argv)
+
+    def load(self,reports):
+        for source in reports:
+            for r in [result for report in source for host in report for result in host]:
+                self.append(r)
 
     def order_by(self,*argv):
         decorated = [(
