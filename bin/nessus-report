@@ -10,31 +10,7 @@ from seine.address import IPv4Address,IPv6Address
 from scanreports.script import prepare,initialize,error
 from scanreports import ReportParserError
 from scanreports.nessus import NessusXMLReport,NessusResultSet
-
-HTML_OUTPUT_HEADER = """<html>
-<head><title>Nessus Report %(title)s</title></head>
-<style type="text/css">
-body { margin: 0; padding: 0 }
-h3 { margin: 5px; padding: 0; }
-table { margin: 5px; padding: 0; border-collapse: collapse; }
-td { border: 1px solid black; vertical-align: top; }
-td.filler { border: none; heigth: 10px; }
-td.info { background-color: #ddeedd; }
-td.low { background-color: #fdff6b; }
-td.medium { background-color: #ffb565; }
-td.high { background-color: #ff5050; }
-td.title { font-weight: bold; }
-</style>
-</html>
-<body>
-  <h3>Nessus Report - %(title)s</h3>
-<table>
-"""
-
-HTML_OUTPUT_TAIL = """
-</table>
-</body>
-</html>"""
+from scanreports.reports import ScanReport,CSVReport,HTMLReport,ExcelReport
 
 DEFAULT_FILTERED_PLUGINS = [0]
 SEVERITY_NAMES = ['Info','Low','Medium','High']
@@ -66,9 +42,12 @@ Processes the nessus XML report (only one!) given on command line and outputs
 details from the report according to given options.""" % 
     os.path.basename(sys.argv[0])
 )   
+parser.set_defaults(**{'title': 'Scan Report'})
 parser.add_option('-a','--addresses',help='Only show given addresses from report')
+parser.add_option('-x','--output-xls',help='Write output to XLS file')
 parser.add_option('-o','--output-html',help='Write output to HTML file')
 parser.add_option('-O','--output-csv',help='Write output to CSV file')
+parser.add_option('-t','--title',help='Report title')
 parser.add_option('-f','--filter-plugins',help='File listing filtered plugin IDs')
 parser.add_option('-g','--group-by-host',action='store_true',help='Group Findings by Host')
 parser.add_option('-l','--list-plugin-ids',action='store_true',help='List plugin IDs with data')
@@ -83,70 +62,15 @@ def id_details_cmp(data,x,y):
         return cmp(data[x][0],data[y][0])
     return cmp(data[x][1],data[y][1])
 
-class filewriter(object):
-    def __init__(self,title,opts):
-        self.title = title
-        self.fd = None
-        self.path = None
-        self.format = format
-        if opts.output_csv:
-            self.path = opts.output_csv
-            self.fd = open(opts.output_csv,'w')
-            self.format = 'csv'
-        if opts.output_html:
-            self.path = opts.output_html
-            self.format = 'html'
-        self.open(title=self.title)
-
-    def open(self,title=''):
-        if self.path is None: 
-            return
-        self.close()
-        try:
-            self.fd = open(self.path,'w')
-            if self.format == 'html':
-                if opts.group_by_host:
-                    self.fd.write(HTML_OUTPUT_HEADER % { 'title': '%s Sorted by Address and Severity' % title })
-                else:
-                    self.fd.write(HTML_OUTPUT_HEADER % { 'title': '%s Sorted by Severity and Address' % title })
-        except OSError,(ecode,emsg):
-            raise ReportParserError('Error opening %s: %s' % (self.path,emsg))
-        except OSError,(ecode,emsg):
-            raise ReportParserError('Error opening %s: %s' % (self.path,emsg))
-
-    def close(self):
-        if self.fd is not None:
-            if self.format == 'html':
-                self.fd.write(HTML_OUTPUT_TAIL)
-            self.fd.close()
-
-    def header(self,severity,title,plugin_id):
-        text = SEVERITY_NAMES[severity]
-        colorclass = text.lower()
-        if self.format == 'csv':
-            self.fd.write('%s\t%s\n' % (text,title))
-        elif self.format == 'html':
-            self.fd.write('<tr><td class="filler">&nbsp;</td></tr>')
-            self.fd.write('<tr><td class="%s">%s</td><td class="title">%s</td></tr>\n' % (colorclass,text,title))
-        else:
-            print '%s %s %s' % (text,plugin_id,title)
-
-    def msg(self,*args):
-        args = list(args)
-        if args[0] == 'hosts':
-            # TODO - do something more interesting for host lists
-            args[1] = ', '.join(args[1])
-        try:
-            args[0] = REPORT_FIELD_TITLES[args[0]]
-        except KeyError:
-            pass
-            
-        if self.format == 'csv':
-            self.fd.write('%s\n' % '\t'.join(args))
-        elif self.format == 'html':
-            self.fd.write('<tr><td>%s</td><td>%s</td></tr>\n' % (args[0],args[1]))
-        else:
-            print '%s' % '\t'.join(args)
+outputs = []
+if opts.output_html:
+    outputs.append(HTMLReport(opts.output_html))
+if opts.output_csv:
+    outputs.append(CSVReport(opts.output_csv))
+if opts.output_xls:
+    outputs.append(ExcelReport(opts.output_xls))
+if len(outputs)==0:
+    outputs.append(ScanReport())
 
 try:
     reports = []
@@ -154,10 +78,13 @@ try:
         log.debug('Loading: %s' % report)
         reports.append(NessusXMLReport(report))
 
+    for out in outputs:
+        out.reportformat = 'Nessus'
+        out.topic = opts.title
+
     log.debug('Merging reports')
     nms = NessusResultSet()
     nms.load(reports)
-    writer = filewriter(title='',opts=opts)
 
     if opts.filter_plugins:
         nms.filter_pluginlist(
@@ -197,20 +124,31 @@ try:
         if last_id is not None and last_id == r.pluginID:
             continue
         last_id = r.pluginID
-        writer.header(r.severity,r.pluginName,plugin_id=r.pluginID)
+        for out in outputs:
+            out.header(SEVERITY_NAMES[r.severity],r.pluginName)
         if opts.group_by_host:
-            writer.msg('hosts',[r.address.ipaddress])
+            for out in outputs:
+                out.row(None,label='Hosts',
+                    fields=[r.address.ipdadress]
+                )
         else:
-            writer.msg('hosts',nms.pluginid_hosts(r.pluginID))
+            for out in outputs:
+                out.row(None,label='Hosts',
+                    fields=[', '.join(nms.pluginid_hosts(r.pluginID))]
+                )
         for k in REPORT_FIELD_ORDER:
             if not r.has_key(k) or r[k] is None: 
                 continue
+            label = REPORT_FIELD_TITLES[k]
             if type(r[k]) == list:
-                writer.msg(k,' '.join(r[k]))
+                for out in outputs:
+                    out.row(None,label=label,fields=['\n'.join(r[k])])
             else:
-                writer.msg(k,r[k])
+                for out in outputs:
+                    out.row(None,label=label,fields=[r[k]])
     log.debug(nms.counters())
-    writer.close()
+    for out in outputs:
+        out.write()
 
 except ReportParserError,e:
     sys.exit(error(e))

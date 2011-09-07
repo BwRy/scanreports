@@ -13,7 +13,7 @@ setup(
     keywords = 'Network Utility Functions',
     url = 'https://github.com/hile/scanreports/downloads',
     zip_safe = False,
-    install_requires = [ 'setproctitle', 'lxml', 'odfpy' ],
+    install_requires = [ 'setproctitle', 'lxml', 'xlwt', 'odfpy' ],
     scripts = glob.glob('bin/*'),
     packages = ['scanreports'],
     author = 'Ilkka Tuohela', 

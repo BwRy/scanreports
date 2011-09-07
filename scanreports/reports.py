@@ -6,6 +6,8 @@ Supported scan report output formats.
 import sys,os,logging
 from configobj import ConfigObj
 
+import xlwt
+
 from scanreports import ReportParserError
 
 DEFAULT_CONFIG_PATH = os.path.join(os.getenv('HOME'),'.scanreports.conf')
@@ -20,28 +22,88 @@ DEFAULT_CONFIG = {
 }
 
 DEFAULT_HTML_TEMPLATE = """<html>
-<head><title>Nessus Report %(title)s</title></head>
+<head><title>%(title)s</title></head>
 <style type="text/css">
 body { margin: 0; padding: 0 }
 h3 { margin: 5px; padding: 0; }
 table { margin: 5px; padding: 0; border-collapse: collapse; }
 td { border: 1px solid black; vertical-align: top; }
 td.filler { border: none; padding: 5px; }
-th { border: 1px solid black; vertical-align: bottom; background-color: %(bg_header)s; color: %(fg_header)s; font-weight: bold; }
-td.high { color: %(fg_high)s; background-color: %(bg_high)s; }
-td.medium { color: %(fg_medium)s; background-color: %(bg_medium)s; }
-td.low { color: %(fg_low)s; background-color: %(bg_low)s; }
-td.info { color: %(fg_info)s; background-color: %(bg_info)s; }
+th { padding-left: 3px; text-align: left; border: 1px solid black; vertical-align: bottom; background-color: %(bg_header)s; color: %(fg_header)s; font-weight: bold; }
+th.high,td.high { color: %(fg_high)s; background-color: %(bg_high)s; }
+th.medium,td.medium { color: %(fg_medium)s; background-color: %(bg_medium)s; }
+th.low,td.low { color: %(fg_low)s; background-color: %(bg_low)s; }
+th.info,td.info { color: %(fg_info)s; background-color: %(bg_info)s; }
 </style>
 </html>
 <body>
-<h3>%(format)s Report - %(title)s</h3>
+<h3>%(format)s - %(title)s</h3>
 <table>
 %(table)s
 </table>
 </body>
 </html>
 """
+
+XLFT_STYLES = {
+    'title': {
+        'style': xlwt.easyxf(
+           'font: bold on, height 320;' +
+           'alignment: vert top, wrap false;' +
+           'border: left thin, right thin, top thin, bottom thin;'
+        ),
+    },
+    'header': { 
+        'style': xlwt.easyxf(
+           'font: bold on;' +
+           'alignment: vert top, wrap true;' +
+           'border: left thin, right thin, top thin, bottom thin;'
+        ),
+    },
+    'normal': {
+        'style': xlwt.easyxf(
+           'font: bold off;' +
+           'alignment: vert top, wrap true;' +
+           'border: left thin, right thin, top thin, bottom thin;'
+        ),
+    },
+    'High': { 
+        'level': 3,
+        'style': xlwt.easyxf(
+           'font: bold on, color white;' +
+           'alignment: vert top;' +
+           'pattern: pattern solid, fore_color red;' +
+           'border: left thin, right thin, top thin, bottom thin;'
+        ),
+    },
+    'Medium': { 
+        'level': 2,
+        'style': xlwt.easyxf(
+           'font: bold on, color black;' +
+           'alignment: vert top;' +
+           'pattern: pattern solid, fore_color light_orange;' +
+           'border: left thin, right thin, top thin, bottom thin;'
+        ),
+    },
+    'Low': { 
+        'level': 1,
+        'style': xlwt.easyxf(
+           'font: bold on, color black;' +
+           'alignment: vert top;' +
+           'pattern: pattern solid, fore_color light_green;' +
+           'border: left thin, right thin, top thin, bottom thin;'
+        ),
+    },
+    'Info': { 
+        'level': 0,
+        'style': xlwt.easyxf(
+           'font: bold on, color black;' +
+           'alignment: vert top, wrap true;' +
+           'pattern: pattern solid, fore_color white;' +
+           'border: left thin, right thin, top thin, bottom thin;'
+        ),
+    }
+}
 
 class ScanReportConfig(dict):
     def __init__(self,path=DEFAULT_CONFIG_PATH):
@@ -93,14 +155,14 @@ class ScanReport(list):
             cmp(self.config['levels'][y]['level'],self.config['levels'][x]['level'])
         )
         self.reportformat = 'Unknown'
-        self.title = 'Report Title'
+        self.topic = 'Report Title'
 
     def header(self,label,value=None):
         self.append('%s %s' % (label,value))
         return
 
     def row(self,severity,label,fields):
-        self.append('%s %s' % (label,' '.join('%s:%s'%(k,v) for k,v in fields)))
+        self.append('%s %s' % (label,' '.join(fields)))
 
     def write(self,path=None):
         if path is not None:
@@ -112,6 +174,9 @@ class CSVReport(ScanReport):
         ScanReport.__init__(self,path,fileformat='csv',config=config)
         self.delimiter = delimiter
 
+    def title(self,label,value=None):
+        self.header(label,value)
+
     def header(self,label,value=None):
         if value is not None:
             self.append([label,value])
@@ -119,7 +184,7 @@ class CSVReport(ScanReport):
             self.append(label)
 
     def row(self,severity,label,fields):
-        self.append([label] + list(fields))
+        self.append([label] + list([f.replace('\n',' ') for f in fields]))
 
     def write(self,path=None):
         import csv
@@ -127,6 +192,47 @@ class CSVReport(ScanReport):
             self.path = path
         writer = csv.writer(open(self.path,'w'),delimiter=self.delimiter)
         writer.writerows(self)
+
+class ExcelReport(ScanReport):
+    def __init__(self,path=None,config=None):
+        ScanReport.__init__(self,path,fileformat='odf',config=config)
+        self.styles_sorted = sorted(
+            filter(lambda k: XLFT_STYLES[k].has_key('level'), XLFT_STYLES.keys()),
+            lambda x,y: cmp(XLFT_STYLES[y]['level'],XLFT_STYLES[x]['level'])
+            )
+
+    def title(self,value):
+        self.append(['title',[value]])
+
+    def header(self,label,value=None):
+        self.append(['spacer',''])
+        if value is not None:
+            self.append(['header',[label,value]])
+        else:
+            self.append(['header',label])
+
+    def row(self,severity,label,fields):
+        self.append(['row',[label] + list(fields)])
+
+    def write(self,path=None):
+        workbook = xlwt.Workbook()
+        sheet = workbook.add_sheet('Report')
+        sheet.col(1).width = sheet.col(1).width*6 
+
+        for i,row in enumerate(self):
+            rowtype = row[0]
+            for j,value in enumerate(row[1]):
+                if value in self.styles_sorted:
+                    sheet.write(i,j,value,XLFT_STYLES[value]['style'])
+                    continue
+                if rowtype == 'title':
+                    sheet.write(i,j,value,XLFT_STYLES['title']['style'])
+                elif rowtype == 'header':
+                    sheet.write(i,j,value,XLFT_STYLES['header']['style'])
+                else:
+                    sheet.write(i,j,value,XLFT_STYLES['normal']['style'])
+
+        workbook.save(self.path)
 
 class HTMLReport(ScanReport):
     def __init__(self,path=None,config=None,template=DEFAULT_HTML_TEMPLATE):
@@ -137,14 +243,23 @@ class HTMLReport(ScanReport):
         if len(self)>0:
             self.append('<tr><td class="filler">&nbsp;</td></tr>')
         if value is not None:
-            self.append("""<tr><th>%s</th><th>%s</th></tr>""" % (label,value))
+            self.append("""<tr><th class="%s">%s</th><th>%s</th></tr>""" % (
+                label.lower(),label,value)
+            )
         else:
-            self.append("""<tr><th colspan="2">%s</th></tr>""" % (label))
+            self.append("""<tr><th class="%s" colspan="2">%s</th></tr>""" % (
+                label.lower(),label)
+            )
 
     def row(self,severity,label,fields):
         if severity is not None and label is not None:
             self.append("""<tr><td class="%s">%s</td>%s</tr>""" % (
                 severity.lower(),
+                label,
+                ''.join("""<td>%s</td>"""% f for f in fields)
+            ))
+        elif label is not None:
+            self.append("""<tr><td>%s</td>%s</tr>""" % (
                 label,
                 ''.join("""<td>%s</td>"""% f for f in fields)
             ))
@@ -156,7 +271,7 @@ class HTMLReport(ScanReport):
     def write(self):
         fd = open(self.path,'w')
         fd.write('%s\n' % self.template % {
-            'title': self.title,
+            'title': self.topic,
             'format': self.reportformat,
             'table': '\n'.join(self),
             'bg_header': self.config.background('header'),
@@ -177,14 +292,20 @@ class ODFReport(ScanReport):
         ScanReport.__init__(self,path,fileformat='odf',config=config)
 
 if __name__ == '__main__':
-    r = HTMLReport(sys.argv[1])
-    r.header('Test1','Test')
+    r = ExcelReport(sys.argv[1])
     r.reportformat = 'Test'
-    r.title = 'Testing report generation'
+    r.topic = 'Testing report generation'
+
+    r.title('Test Report')
+    r.header('High','Test\nOther Line\nThird Line')
     for i,s in enumerate(r.levels):
         r.row(severity=s,label='Row %d'%i,fields=('field 1','field 2','field 3'))
-    r.header('Test2','Test')
+    r.header('Medium','Test')
     for i,s in enumerate(r.levels):
-        r.row(severity=s,label='Row %d'%i,fields=('field 1','field 2','field 3'))
+        r.row(severity=None,label='',fields=(
+            'field 1','field 2','field 3\nline 2\nline3\nline 4')
+        )
+    r.header('Low','Test')
+    r.header('Info','Test')
     r.write()
 
