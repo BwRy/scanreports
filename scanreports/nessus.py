@@ -9,6 +9,8 @@ from lxml import etree
 from scanreports import ReportParserError
 from seine.address import IPv4Address,IPv6Address
 
+SEVERITY_NAMES = ['Info','Low','Medium','High']
+
 NESSUS_REPORT_FORMATS = [
     'NessusClientData_v2'
 ]
@@ -273,11 +275,41 @@ class NessusResultSet(list):
     def __sortkeys__(self,*argv):
         return lambda mapping: tuple(-mapping[name[1:]] if name.startswith('-') else mapping[name] for name in argv)
 
-    def load(self,reports):
+    def load(self,reports,filtered,addresses=[]):
+        networks = filter(lambda address: 
+            (type(address)==IPv4Address and address.bitmask!=32) or\
+            (type(address)==IPv6Address and address.bitmask!=128),
+            addresses
+        )
+        def match_address(address,addresses,networks):
+            if address in addresses:
+                return True
+            networks = filter(lambda n: type(n)==type(address), networks)
+            for n in networks:
+                if n.addressInNetwork(address):
+                    return True
+            return False
+
         for source in reports:
-            self.log.debug('Merging report: %s' % source)
+            self.log.debug('Merging report with %d plugin IDs filtered: %s' % (
+                len(filtered),source
+            ))
+            filtered_count = 0
+            filter_address_count = 0
             for r in [result for report in source for host in report for result in host]:
+                if r.pluginID in filtered:
+                    filtered_count += 1
+                    continue
+                if addresses!=[] and not match_address(r.address,addresses,networks):
+                    filter_address_count += 1
+                    continue 
                 self.append(r)
+            if addresses!=[]:
+                self.log.debug('Filtered out %d plugins %d addresses' % (
+                    filtered_count,filter_address_count
+                ))
+            else:
+                self.log.debug('Filtered out %d plugins' % filtered_count)
 
     def order_by(self,*argv):
         self.log.debug('Ordering results')
@@ -290,10 +322,12 @@ class NessusResultSet(list):
         self.__delslice__(0,len(self))
         self.extend([d[-1] for d in decorated])
 
-    def pluginid_hosts(self,pid):
-        self.log.debug('Collecting target host addresses for plugin %s' % pid)
+    def pluginid_hosts(self,result):
+        self.log.debug('Grouping hosts for plugin: %s %s' % (
+            SEVERITY_NAMES[result.severity],result.pluginName
+        ))
         return [h.ipaddress for h in sorted(
-            set(r.address for r in self if r.pluginID == pid) 
+            set(r.address for r in self if r.pluginID == result.pluginID) 
         )]
 
     def filter(self,fn):
@@ -313,7 +347,7 @@ class NessusResultSet(list):
             values[r.severity] += 1
         return values
 
-    def filter_pluginlist(self,path,filtered_ids):
+    def merge_pluginlist_file(self,path,filtered_ids):
         try:
             for l in open(path,'r').readlines():
                 if l.startswith('#'): continue
@@ -332,10 +366,10 @@ class NessusResultSet(list):
                 'Error reading filtered plugin list file %s %s' % (
                 opts.filter_plugins,emsg
             ))
-        self.filter(lambda x: x.pluginID not in filtered_ids)
+        return filtered_ids
 
-    def match_addresslist(self,values):
-        self.log.debug('Matching address list to %s' % values)
+    def load_addresslist(self,values):
+        self.log.debug('Loading address list %s' % values)
         addresses = []
         for address in values:
             try:
@@ -346,18 +380,7 @@ class NessusResultSet(list):
                 except ValueError:
                     raise ReportParserError('Invalid address: %s' % address)
             addresses.append(address)
-
-        def match(address,addresses):
-            if address in addresses:
-                return True
-            if type(address) in [IPv4Address,IPv6Address]:
-                for m in addresses:
-                    if m.addressInNetwork(address):
-                        return True
-            else:
-                raise ReportParserError('Unknown address type: %s' % address)
-            return False
-        self.filter(lambda x: match(x.address,addresses))
+        return addresses
 
 if __name__ == '__main__':
     nms = NessusXMLReport(sys.argv[1])

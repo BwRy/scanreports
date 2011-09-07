@@ -74,6 +74,8 @@ if len(outputs)==0:
 
 try:
     reports = []
+    nms = NessusResultSet()
+
     for report in args:
         log.debug('Loading: %s' % report)
         reports.append(NessusXMLReport(report))
@@ -82,22 +84,21 @@ try:
         out.reportformat = 'Nessus'
         out.topic = opts.title
 
-    log.debug('Merging reports')
-    nms = NessusResultSet()
-    nms.load(reports)
-
     if opts.filter_plugins:
-        nms.filter_pluginlist(
+        filtered_ids = nms.merge_pluginlist_file(
             opts.filter_plugins,
             set(DEFAULT_FILTERED_PLUGINS)
         )
     else:
-        nms.filter(
-            lambda x: x.pluginID not in set(DEFAULT_FILTERED_PLUGINS)
-        )
+        filtered_ids = list(set(DEFAULT_FILTERED_PLUGINS))
 
     if opts.addresses: 
-        nms.match_addresslist(opts.addresses.split(','))
+        addresses = nms.load_addresslist(opts.addresses.split(','))
+    else:
+        addresses = []
+
+    log.debug('Merging reports')
+    nms.load(reports,filtered=filtered_ids,addresses=addresses)
 
     if opts.list_plugin_ids:
         id_details = {}
@@ -134,7 +135,7 @@ try:
         else:
             for out in outputs:
                 out.row(None,label='Hosts',
-                    fields=[', '.join(nms.pluginid_hosts(r.pluginID))]
+                    fields=[', '.join(nms.pluginid_hosts(r))]
                 )
         for k in REPORT_FIELD_ORDER:
             if not r.has_key(k) or r[k] is None: 
