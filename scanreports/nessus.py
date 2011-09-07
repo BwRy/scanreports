@@ -271,6 +271,7 @@ class NessusPluginList(object):
 class NessusResultSet(list):
     def __init__(self):
         self.log = logging.getLogger('modules')
+        self.pluginid_hostmap = {}
 
     def __sortkeys__(self,*argv):
         return lambda mapping: tuple(-mapping[name[1:]] if name.startswith('-') else mapping[name] for name in argv)
@@ -303,6 +304,10 @@ class NessusResultSet(list):
                 if addresses!=[] and not match_address(r.address,addresses,networks):
                     filter_address_count += 1
                     continue 
+                if not self.pluginid_hostmap.has_key(r.pluginID):
+                    self.pluginid_hostmap[r.pluginID] = []
+                if r.address not in self.pluginid_hostmap[r.pluginID]:
+                    self.pluginid_hostmap[r.pluginID].append(r.address)
                 self.append(r)
             if addresses!=[]:
                 self.log.debug('Filtered out %d plugins %d addresses' % (
