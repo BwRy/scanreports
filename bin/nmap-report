@@ -8,6 +8,7 @@ import os,sys,logging
 from scanreports.script import prepare,initialize,error
 from scanreports import ReportParserError
 from scanreports.nmap import NMAPSummary
+from scanreports.reports import ScanReport,CSVReport,HTMLReport,ExcelReport
 
 SUPPORTED_PROTOCOLS = [ 'tcp','udp']
 
@@ -18,16 +19,35 @@ Parses the NMAP XML report files given on command line and shows a summary of
 the findings, merged to one list instead of each report separately.""" % 
     os.path.basename(sys.argv[0])
 )
+parser.set_defaults(**{'title': 'Open Ports Summary'})
 parser.add_option('-p','--ports',dest='ports',type='string',help='Match these ports')
-parser.add_option('-o','--protocols',dest='protocols',type='string',help='Match only ports with this protocol')
+parser.add_option('-P','--protocols',dest='protocols',type='string',help='Match only ports with this protocol')
 parser.add_option('-s','--status',dest='status',type='string',help='Match only ports with this status')
 parser.add_option('-H','--host',dest='host',type='string',help='Match only this host')
+parser.add_option('-x','--output-xls',help='Write output to XLS file')
+parser.add_option('-o','--output-html',help='Write output to HTML file')
+parser.add_option('-O','--output-csv',help='Write output to CSV file')
+parser.add_option('-t','--title',help='Report title')
 parser.add_option('-q','--quiet',dest='quiet',action='store_true',help='Show minimal info')
 (opts,args) = initialize(parser)
 log = logging.getLogger('console')
 
 if len(args)==0:
     sys.exit(error(parser.get_usage()))
+
+outputs = []
+if opts.output_html:
+    outputs.append(HTMLReport(opts.output_html))
+if opts.output_csv:
+    outputs.append(CSVReport(opts.output_csv))
+if opts.output_xls:
+    outputs.append(ExcelReport(opts.output_xls))
+if len(outputs)==0:
+    outputs.append(ScanReport())
+
+for out in outputs:
+    out.reportformat = 'NMAP'
+    out.topic = opts.title
 
 nms = NMAPSummary()
 for f in args:
@@ -130,13 +150,11 @@ try:
                 matchports += p
             if len(matchports) == 0:
                 continue
-            print '%s\t%s' % (ipv4,osi)
-            if opts.verbose:
-                print fmt % ('Port','Protocol','State','Service','Version')
+            for out in outputs:
+                out.header('%s\t%s' % (ipv4,osi))
         else:
-            print '%s\t%s' % (ipv4,osi)
-            if opts.verbose:
-                print fmt % ('Port','Protocol','State','Service','Version')
+            for out in outputs:
+                out.header(ipv4,osi)
 
         for p in ports:
             state = p['state'] is not None and p['state'] or 'unknown'
@@ -147,13 +165,22 @@ try:
                 try:
                     version = p['service']['product']
                 except KeyError:
-                    version = ''
+                    version = None 
             else:
                 service = ''
-                version = ''
-            print fmt % (int(p), p['protocol'].upper(), state, service, version)   
-            #print p.items()
-        print 
+                version = None
+            for out in outputs:
+                if version is not None:
+                    out.row(None,label=str(int(p)),
+                        fields=[p['protocol'].upper(), state, service, version]
+                    )   
+                else:
+                    out.row(None,label=str(int(p)),
+                        fields=[p['protocol'].upper(), state, service]
+                    )   
+    
+    for out in outputs:
+        out.write()
 
 except (IOError,KeyboardInterrupt):
     sys.exit(0)

@@ -196,6 +196,7 @@ class CSVReport(ScanReport):
 class ExcelReport(ScanReport):
     def __init__(self,path=None,config=None):
         ScanReport.__init__(self,path,fileformat='odf',config=config)
+        self.widths = {}
         self.styles_sorted = sorted(
             filter(lambda k: XLFT_STYLES[k].has_key('level'), XLFT_STYLES.keys()),
             lambda x,y: cmp(XLFT_STYLES[y]['level'],XLFT_STYLES[x]['level'])
@@ -217,7 +218,8 @@ class ExcelReport(ScanReport):
     def write(self,path=None):
         workbook = xlwt.Workbook()
         sheet = workbook.add_sheet('Report')
-        sheet.col(1).width = sheet.col(1).width*6 
+        for col,multiplier in self.widths.items():
+            sheet.col(col).width = sheet.col(col).width*multiplier
 
         for i,row in enumerate(self):
             rowtype = row[0]
