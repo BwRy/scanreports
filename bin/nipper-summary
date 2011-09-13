@@ -1,0 +1,81 @@
+#!/usr/bin/env python
+#
+# Show results from nipper results
+#
+
+import os,sys,logging
+
+from scanreports.script import prepare,initialize,error
+from scanreports import ReportParserError
+from scanreports.nipper import NipperReportsSummary,SUMMARY_TEXT_FIELD_NAMES
+from scanreports.reports import ScanReport,CSVReport,HTMLReport,ExcelReport
+
+SUPPORTED_PROTOCOLS = [ 'tcp','udp']
+
+parser = prepare(sys.argv)
+parser.set_usage("""%s [options] <nmap-xml-reports>
+
+Parses the Nipper commercial version HTML outpu reports and merges a topic
+based summary for all the files. The summary does not contain many details, 
+use the original reports to see details.""" % 
+    os.path.basename(sys.argv[0])
+)
+parser.set_defaults(**{'title': 'Short Summary of Nipper Findings'})
+parser.add_option('-H','--host',dest='host',type='string',help='Match only this host')
+parser.add_option('-x','--output-xls',help='Write output to XLS file')
+parser.add_option('-o','--output-html',help='Write output to HTML file')
+parser.add_option('-O','--output-csv',help='Write output to CSV file')
+parser.add_option('-t','--title',help='Report title')
+parser.add_option('-q','--quiet',dest='quiet',action='store_true',help='Show minimal info')
+(opts,args) = initialize(parser)
+log = logging.getLogger('console')
+
+if len(args)==0:
+    sys.exit(error(parser.get_usage()))
+
+outputs = []
+if opts.output_html:
+    outputs.append(HTMLReport(opts.output_html))
+if opts.output_csv:
+    outputs.append(CSVReport(opts.output_csv))
+if opts.output_xls:
+    outputs.append(ExcelReport(opts.output_xls))
+if len(outputs)==0:
+    outputs.append(ScanReport())
+
+for out in outputs:
+    out.reportformat = 'Nipper Summary'
+    out.topic = opts.title
+
+nrl = NipperReportsSummary()
+for f in args:
+    if not os.path.isfile(f):
+        sys.exit(error('%s\n'%'No such file: %s' % f))
+    try:
+        nrl.load(f)
+    except ReportParserError,e:
+        log.info('%s\n'%e)
+        continue
+
+for severity in ['High','Medium','Low','Info']:
+    for issue in sorted(nrl[severity].keys()):
+        for out in outputs:
+            out.header(severity,issue)
+            out.row(None,label='Hosts',
+                fields=[','.join([e.name for e in nrl[severity][issue]])]
+            )
+        unique_msgs = {}
+        for entry in nrl[severity][issue]:
+            for field in filter(lambda k: entry.has_key(k), SUMMARY_TEXT_FIELD_NAMES):
+                msg = unicode(entry[field])
+                if not unique_msgs.has_key(field):
+                    unique_msgs[field] = {}
+                if unique_msgs[field].has_key(msg):
+                    continue
+                out.row(None,label=entry[field].label,fields=[unicode(entry[field])])
+                unique_msgs[field][msg] = None
+
+for out in outputs:
+    out.write()
+
+
