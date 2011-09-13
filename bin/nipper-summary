@@ -39,7 +39,10 @@ if opts.output_html:
 if opts.output_csv:
     outputs.append(CSVReport(opts.output_csv))
 if opts.output_xls:
-    outputs.append(ExcelReport(opts.output_xls))
+    r = ExcelReport(opts.output_xls)
+    r.widths[1] = 6
+    outputs.append(r)
+
 if len(outputs)==0:
     outputs.append(ScanReport())
 
