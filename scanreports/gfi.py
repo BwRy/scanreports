@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# coding=utf-8
 """
 Parser for GFI Languard XML reports
 """
@@ -10,6 +11,45 @@ from scanreports import ReportParserError
 from seine.address import IPv4Address,IPv6Address
 
 SEVERITY_NAMES = ['Info','Low','Medium','High']
+
+APP_VENDOR_MAP = {
+    'Adobe Systems': [
+        'Adobe Systems', 'Adobe Systems Incorporated', 'Adobe Systems, Inc.',
+    ],
+    'Card Tech Services': [ 'CTL', 'Card Tech Services Limited', ],
+    'EMC': ['EMC','EMC Corporation'],
+    'Fujitsu': ['Fujitsu','FUJITSU'],
+    'Huawei': ['Huawei','Huawei technologies'],
+    'Intel Corporation': [ 'Intel', 'Intel Corporation', ],
+    'Juniper Networks': [ 'Juniper Networks', 'Juniper Networks, Inc.', ],
+    'IBM': ['IBM', 'Cognos ULC'],
+    'IntraLinks': ['IntraLinks', 'IntraLinks Inc.',],
+    'Kofax': ['Kofax','Kofax Image Products',],
+    'Lenovo': [ 'Lenovo', 'Lenovo Group Limited.', ],
+    'McAfee': [ 'McAfee, Inc.', ],
+    'Microsoft': ['Microsoft', 'Microsoft Corporation', ],
+    'Oracle': ['Oracle', 'Oracle Corporation'],
+    'PFU': ['PFU','PFU LIMITED'],
+    'Progress Soft': [
+        'Progressoft', 'Progress Soft Corporation ®', 'Progress Soft Corporation', 
+    ],
+    'Reuters': [
+        'Reuters','Reuters America Inc.','Reuters Ltd.',
+        'Reuters Messaging Development', 'http://www.reuters.com',
+    ],
+    'SafeNet': ['SafeNet','SafeNet, Inc.'],
+    'Sun Microsystems': [ 'Sun Microsystems', 'Sun Microsystems, Inc.' ],
+    'Thomson Reuters': [
+        'Thomson Reuters', 'Thomson Reuters America Inc.',
+        'Thomson Reuters Limited', 'Thomson Reuters Messaging Development',
+    ],
+    'UPEK': ['UPEK','UPEK Inc.'],
+    'Webex Communications': [
+        'Webex Communications','WebEx Communications Inc.',
+    ],
+    'WinZip Computing': ['Winzip','WinZip Computing, Inc.',],
+    'Winbond': ['Winbond Electronics Corporation',],
+}
 
 class GFILanguardReport(list):
     def __init__(self,path):
@@ -81,6 +121,11 @@ class GFIInstalledApp(dict):
         self.host = host
         self.node = node
         self.update(node.items())
+        if self['publisher'] != '':
+            for name,values in APP_VENDOR_MAP.items():
+                if self['publisher'].encode('utf-8') in values:
+                    self['publisher'] = name
+                    break
 
     def __getattr__(self,attr):
         try:
@@ -99,7 +144,7 @@ class GFILanguardSummary(dict):
             return [host.address for report in self.reports for host in report]
         raise AttributeError('No such GFILanguardSummary attribute: %s' % attr)
 
-    def add(self,path):
+    def read(self,path):
         report = GFILanguardReport(path)
         for host in report:
             if host.address in self.hosts:
@@ -109,34 +154,12 @@ class GFILanguardSummary(dict):
                 self.noapps.append(host)
                 continue
             for app in host.apps:
-                if not self.has_key(app.name):
-                    self[app.name] = [] 
-                self[app.name].append(host)
+                name = ' '.join([app.publisher,app.name]).lstrip()
+                if not self.has_key(name):
+                    self[name] = {
+                        'app': app,
+                        'hosts': []
+                    }
+                self[name]['hosts'].append(host)
         self.reports.append(report)
-
-if __name__ == '__main__':
-    gfi = GFILanguardSummary()
-    for r in sys.argv[1:]:
-        gfi.add(r)
-
-    withapps = sorted(list(set(
-        [host.address for swhosts in gfi.values() for host in swhosts]
-    )))
-    for app in sorted(gfi.keys()):
-        print app.encode('utf-8')
-        hosts = gfi[app]
-        for host in sorted(hosts,lambda x,y: cmp(x.address,y.address)):
-            print host.address.ipaddress
-        print
-
-    print '### Hosts with apps reported (%d total)' % len(withapps)
-    for address in withapps:
-        print address.ipaddress
-
-    noapps = sorted(gfi.noapps,lambda x,y: cmp(x.address,y.address))
-    print '### Hosts with no apps reported (%d total)' % len(noapps)
-    for host in noapps:
-        print host.address.ipaddress
-
-
 
