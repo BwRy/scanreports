@@ -210,7 +210,7 @@ class ExcelReport(ScanReport):
         if value is not None:
             self.append(['header',[label,value]])
         else:
-            self.append(['header',label])
+            self.append(['header',[label]])
 
     def row(self,severity,label,fields):
         self.append(['row',[label] + list(fields)])

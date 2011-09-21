@@ -41,7 +41,9 @@ if opts.output_html:
 if opts.output_csv:
     outputs.append(CSVReport(opts.output_csv))
 if opts.output_xls:
-    outputs.append(ExcelReport(opts.output_xls))
+    r = ExcelReport(opts.output_xls)
+    r.widths[0] = 1.5
+    outputs.append(r)
 if len(outputs)==0:
     outputs.append(ScanReport())
 
@@ -151,10 +153,10 @@ try:
             if len(matchports) == 0:
                 continue
             for out in outputs:
-                out.header('%s\t%s' % (ipv4,osi))
+                out.header('%s %s' % (ipv4,osi))
         else:
             for out in outputs:
-                out.header(ipv4,osi)
+                out.header('%s %s' % (ipv4,osi))
 
         for p in ports:
             state = p['state'] is not None and p['state'] or 'unknown'
