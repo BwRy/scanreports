@@ -6,7 +6,7 @@ Supported scan report output formats.
 import sys,os,logging
 from configobj import ConfigObj
 
-import xlwt
+import xlwt,cgi
 
 from scanreports import ReportParserError
 
@@ -27,9 +27,9 @@ DEFAULT_HTML_TEMPLATE = """<html>
 body { margin: 0; padding: 0 }
 h3 { margin: 5px; padding: 0; }
 table { margin: 5px; padding: 0; border-collapse: collapse; }
-td { border: 1px solid black; vertical-align: top; }
+th { padding-left: 3px; text-align: left; border: 1px solid black; vertical-align: bottom; background-color: %(bg_header)s; color: %(fg_header)s; font-weight: bold; white-space: pre-line; }
+td { border: 1px solid black; vertical-align: top; white-space: pre-line; }
 td.filler { border: none; padding: 5px; }
-th { padding-left: 3px; text-align: left; border: 1px solid black; vertical-align: bottom; background-color: %(bg_header)s; color: %(fg_header)s; font-weight: bold; }
 th.high,td.high { color: %(fg_high)s; background-color: %(bg_high)s; }
 th.medium,td.medium { color: %(fg_medium)s; background-color: %(bg_medium)s; }
 th.low,td.low { color: %(fg_low)s; background-color: %(bg_low)s; }
@@ -242,9 +242,11 @@ class HTMLReport(ScanReport):
         self.template = template
 
     def header(self,label,value=None):
+        label = cgi.escape(label)
         if len(self)>0:
             self.append('<tr><td class="filler">&nbsp;</td></tr>')
         if value is not None:
+            value = cgi.escape(value)
             self.append("""<tr><th class="%s">%s</th><th>%s</th></tr>""" % (
                 label.lower(),label,value)
             )
@@ -255,19 +257,20 @@ class HTMLReport(ScanReport):
 
     def row(self,severity,label,fields):
         if severity is not None and label is not None:
+            label = cgi.escape(label)
             self.append("""<tr><td class="%s">%s</td>%s</tr>""" % (
                 severity.lower(),
                 label,
-                ''.join("""<td>%s</td>"""% f for f in fields)
+                ''.join("""<td>%s</td>"""% cgi.escape(f) for f in fields)
             ))
         elif label is not None:
             self.append("""<tr><td>%s</td>%s</tr>""" % (
                 label,
-                ''.join("""<td>%s</td>"""% f for f in fields)
+                ''.join("""<td>%s</td>"""% cgi.escape(f) for f in fields)
             ))
         else:
             self.append("""<tr>%s</tr>""" % 
-                ''.join("""<td>%s</td>"""% f for f in fields)
+                ''.join("""<td>%s</td>"""% cgi.escape(f) for f in fields)
             )
 
     def write(self):

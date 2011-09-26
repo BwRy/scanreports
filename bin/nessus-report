@@ -47,6 +47,7 @@ parser.add_option('-a','--addresses',help='Only show given addresses from report
 parser.add_option('-x','--output-xls',help='Write output to XLS file')
 parser.add_option('-o','--output-html',help='Write output to HTML file')
 parser.add_option('-O','--output-csv',help='Write output to CSV file')
+parser.add_option('-p','--plugin-output',action='store_true',help='Add plugin outputs to report')
 parser.add_option('-t','--title',help='Report title')
 parser.add_option('-f','--filter-plugins',help='File listing filtered plugin IDs')
 parser.add_option('-g','--group-by-host',action='store_true',help='Group Findings by Host')
@@ -153,6 +154,13 @@ try:
             else:
                 for out in outputs:
                     out.row(None,label=label,fields=[r[k]])
+
+        if opts.plugin_output and r.has_key('plugin_output'):
+            for out in outputs:
+                out.row(
+                    None,label='Details',fields=['\n'.join(r['plugin_output'])]
+                )
+        
     log.debug(nms.counters())
     for out in outputs:
         out.write()

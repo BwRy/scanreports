@@ -3,7 +3,7 @@
 Parser for nessus XML report files
 """
 
-import os,logging,sys,time,re,decimal
+import os,logging,sys,time,re,decimal,socket
 from lxml import etree
 
 from scanreports import ReportParserError
@@ -104,9 +104,7 @@ class NessusTargetHost(list):
             try:
                 self.address = IPv6Address(self.address)
             except ValueError:
-                raise ReportParserError(
-                    'Error parsing name to address: %s' % self.name
-                )
+                self.address = IPv4Address(socket.gethostbyaddr(self.address)[2][0])
 
         try:
             for i in self.node.findall('ReportItem'):
