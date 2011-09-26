@@ -202,7 +202,7 @@ class NessusTargetResultItem(dict):
                 if n.text.lower() in ['n/a','']:
                     self['solution'] = None
                 else:
-                    self['solution'] = n.text.replace('\n',' ')
+                    self['solution'] = n.text
 
             elif n.tag == 'risk_factor':
                 if n.text in ['None','']:

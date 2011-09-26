@@ -157,11 +157,11 @@ class ScanReport(list):
         self.reportformat = 'Unknown'
         self.topic = 'Report Title'
 
-    def header(self,label,value=None):
+    def header(self,label,value=None,multiline=False):
         self.append('%s %s' % (label,value))
         return
 
-    def row(self,severity,label,fields):
+    def row(self,severity,label,fields,multiline=False):
         self.append('%s %s' % (label,' '.join(fields)))
 
     def write(self,path=None):
@@ -177,13 +177,13 @@ class CSVReport(ScanReport):
     def title(self,label,value=None):
         self.header(label,value)
 
-    def header(self,label,value=None):
+    def header(self,label,value=None,multiline=False):
         if value is not None:
             self.append([label,value])
         else:
             self.append(label)
 
-    def row(self,severity,label,fields):
+    def row(self,severity,label,fields,multiline=False):
         self.append([label] + list([f.replace('\n',' ') for f in fields]))
 
     def write(self,path=None):
@@ -205,14 +205,14 @@ class ExcelReport(ScanReport):
     def title(self,value):
         self.append(['title',[value]])
 
-    def header(self,label,value=None):
+    def header(self,label,value=None,multiline=False):
         self.append(['spacer',''])
         if value is not None:
             self.append(['header',[label,value]])
         else:
             self.append(['header',[label]])
 
-    def row(self,severity,label,fields):
+    def row(self,severity,label,fields,multiline=False):
         self.append(['row',[label] + list(fields)])
 
     def write(self,path=None):
@@ -241,12 +241,16 @@ class HTMLReport(ScanReport):
         ScanReport.__init__(self,path,fileformat='html',config=config)
         self.template = template
 
-    def header(self,label,value=None):
+    def header(self,label,value=None,multiline=False):
         label = cgi.escape(label)
+        if multiline:
+            label.replace('\n','<br />')
         if len(self)>0:
             self.append('<tr><td class="filler">&nbsp;</td></tr>')
         if value is not None:
             value = cgi.escape(value)
+            if multiline:
+                value.replace('\n','<br />')
             self.append("""<tr><th class="%s">%s</th><th>%s</th></tr>""" % (
                 label.lower(),label,value)
             )
@@ -255,23 +259,28 @@ class HTMLReport(ScanReport):
                 label.lower(),label)
             )
 
-    def row(self,severity,label,fields):
+    def row(self,severity,label,fields,multiline=False):
+        if multiline:
+            fields = ''.join("""<td>%s</td>"""% cgi.escape(f).replace('\n','<br />') for f in fields)
+        else:
+            fields = ''.join("""<td>%s</td>"""% cgi.escape(f) for f in fields)
+
         if severity is not None and label is not None:
             label = cgi.escape(label)
+            if multiline:
+                label.replace('\n','<br />')
             self.append("""<tr><td class="%s">%s</td>%s</tr>""" % (
                 severity.lower(),
                 label,
-                ''.join("""<td>%s</td>"""% cgi.escape(f) for f in fields)
+                fields,
             ))
         elif label is not None:
-            self.append("""<tr><td>%s</td>%s</tr>""" % (
-                label,
-                ''.join("""<td>%s</td>"""% cgi.escape(f) for f in fields)
-            ))
+            label = cgi.escape(label)
+            if multiline:
+                label.replace('\n','<br />')
+            self.append("""<tr><td>%s</td>%s</tr>""" % ( label, fields,))
         else:
-            self.append("""<tr>%s</tr>""" % 
-                ''.join("""<td>%s</td>"""% cgi.escape(f) for f in fields)
-            )
+            self.append("""<tr>%s</tr>""" % fields) 
 
     def write(self):
         fd = open(self.path,'w')

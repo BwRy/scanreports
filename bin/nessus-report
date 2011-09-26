@@ -139,10 +139,10 @@ try:
         else:
             for out in outputs:
                 out.row(None,label='Hosts',
-                    fields=[', '.join([
+                    fields=['\n'.join([
                         a.ipaddress \
                         for a in sorted(nms.pluginid_hostmap[r.pluginID])
-                    ])]
+                    ])],
                 )
         for k in REPORT_FIELD_ORDER:
             if not r.has_key(k) or r[k] is None: 
