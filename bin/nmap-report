@@ -3,7 +3,7 @@
 # Show results from nmap results, optionally matching ports or hosts given
 #
 
-import os,sys,logging
+import os,sys,re,logging
 
 from scanreports.script import prepare,initialize,error
 from scanreports import ReportParserError
@@ -20,20 +20,26 @@ the findings, merged to one list instead of each report separately.""" %
     os.path.basename(sys.argv[0])
 )
 parser.set_defaults(**{'title': 'Open Ports Summary'})
-parser.add_option('-p','--ports',dest='ports',type='string',help='Match these ports')
-parser.add_option('-P','--protocols',dest='protocols',type='string',help='Match only ports with this protocol')
-parser.add_option('-s','--status',dest='status',type='string',help='Match only ports with this status')
-parser.add_option('-H','--host',dest='host',type='string',help='Match only this host')
+parser.add_option('-p','--ports',type='string',help='Match these ports')
+parser.add_option('-P','--protocols',type='string',help='Match only ports with this protocol')
+parser.add_option('-s','--status',type='string',help='Match only ports with this status')
+parser.add_option('-H','--host',type='string',help='Match only this host')
+parser.add_option('-r','--regexp',type='string',help='Match port software with regexp')
 parser.add_option('-x','--output-xls',help='Write output to XLS file')
 parser.add_option('-o','--output-html',help='Write output to HTML file')
 parser.add_option('-O','--output-csv',help='Write output to CSV file')
 parser.add_option('-t','--title',help='Report title')
-parser.add_option('-q','--quiet',dest='quiet',action='store_true',help='Show minimal info')
+parser.add_option('-q','--quiet',dest='quiet',action='store_true',help='List only hosts')
 (opts,args) = initialize(parser)
 log = logging.getLogger('console')
 
 if len(args)==0:
     sys.exit(error(parser.get_usage()))
+
+if opts.regexp:
+    match_swname = re.compile(opts.regexp)
+else:
+    match_swname = None
 
 outputs = []
 if opts.output_html:
@@ -95,12 +101,20 @@ try:
             else:
                 tcp_ports += host.tcp_ports
             for tp in tcp_ports:
+                if match_swname is not None:
+                    if tp['service'] is None:
+                        continue
+                    if not tp['service'].has_key('product'):
+                        continue
+                    if not match_swname.match(tp['service']['product']):
+                        continue
                 found = False
                 for p in ports:
                     if p['protocol'] == 'tcp' and int(tp) == int(p):
                         if tp['service'] is not None and tp['service'].has_key('product'):
                             p['service']['product'] = tp['service']['product']
                         found = True
+
                 if not found:
                     ports.append(tp)
 
@@ -111,6 +125,13 @@ try:
             else:
                 udp_ports += host.udp_ports
             for up in udp_ports:
+                if match_swname is not None:
+                    if up['service'] is None:
+                        continue
+                    if not up['service'].has_key('product'):
+                        continue
+                    if not match_swname.match(up['service']['product']):
+                        continue
                 found = False
                 for p in ports:
                     if p['protocol'] == 'udp' and int(up) == int(p):
@@ -121,10 +142,6 @@ try:
                     ports.append(up)
 
         if len(ports) == 0:
-            continue
-
-        if opts.quiet and len(ports) == 1:
-            print ','.join([a['addr'] for a in host.ipv4_addresses])
             continue
 
         ipv4 = None
@@ -153,12 +170,22 @@ try:
             if len(matchports) == 0:
                 continue
             for out in outputs:
-                out.header('%s %s' % (ipv4,osi))
+                if not opts.quiet:
+                    out.header('%s %s' % (ipv4,osi))
+                else:
+                    out.header('%s' % ipv4)
         else:
             for out in outputs:
-                out.header('%s %s' % (ipv4,osi))
+                if not opts.quiet:
+                    out.header('%s %s' % (ipv4,osi))
+                else:
+                    out.header('%s' % ipv4)
 
         for p in ports:
+            if opts.quiet:
+                for out in outputs:
+                    out.row(None,label=str(int(p)),fields=[])
+                continue
             state = p['state'] is not None and p['state'] or 'unknown'
             if opts.status and state != opts.status:
                 continue

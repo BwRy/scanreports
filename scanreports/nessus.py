@@ -304,8 +304,12 @@ class NessusResultSet(list):
                     continue 
                 if not self.pluginid_hostmap.has_key(r.pluginID):
                     self.pluginid_hostmap[r.pluginID] = []
-                if r.address not in self.pluginid_hostmap[r.pluginID]:
-                    self.pluginid_hostmap[r.pluginID].append(r.address)
+                if r.port != 0:
+                    r_key = '%s:%s' % (r.address.ipaddress,r.port)
+                else:
+                    r_key = '%s' % r.address.ipaddress
+                if r_key not in self.pluginid_hostmap[r.pluginID]:
+                    self.pluginid_hostmap[r.pluginID].append(r_key)
                 self.append(r)
             if addresses!=[]:
                 self.log.debug('Filtered out %d plugins %d addresses' % (

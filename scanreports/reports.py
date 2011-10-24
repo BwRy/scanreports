@@ -158,7 +158,10 @@ class ScanReport(list):
         self.topic = 'Report Title'
 
     def header(self,label,value=None,multiline=False):
-        self.append('%s %s' % (label,value))
+        if value is not None:
+            self.append('%s %s' % (label,value))
+        else:
+            self.append('%s' % label)
         return
 
     def row(self,severity,label,fields,multiline=False):
@@ -167,6 +170,8 @@ class ScanReport(list):
     def write(self,path=None):
         if path is not None:
             self.path = path
+        if len(self) == 0:
+            return
         sys.stdout.write('%s\n' % '\n'.join(self))
 
 class CSVReport(ScanReport):

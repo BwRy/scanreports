@@ -40,15 +40,20 @@ class NMAPXMLOutputFile(object):
 class NMAPTargetHostEntry(object):
     def __init__(self,node):
         self.nmapscans = [ NMAPHostScan(node) ]
-        self.ports = map(lambda p: 
-            NMAPTargetPortEntry(p),
-            node.find('ports').findall('port'),
-        )
-        self.addresses = map(lambda a:
-            NMAPHostAddressEntry(a),
-            node.findall('address'),
-        )
-        self.osinfo = NMAPHostOSGuesses(node.find('os'))
+        try:
+            self.ports = map(lambda p: 
+                NMAPTargetPortEntry(p),
+                node.find('ports').findall('port'),
+            )
+            self.addresses = map(lambda a:
+                NMAPHostAddressEntry(a),
+                node.findall('address'),
+            )
+            self.osinfo = NMAPHostOSGuesses(node.find('os'))
+        except AttributeError:
+            raise ReportParserError(
+                'No ports or addresses in target entry %s' % node.items()
+            )
 
     def __getattr__(self,attr):
         if attr == 'ipv4_addresses':
@@ -92,7 +97,11 @@ class NMAPTargetHostEntry(object):
 class NMAPHostScan(object):
     def __init__(self,node):
         if node.get('starttime') is None:
-            raise ReportParserError('No start time in node')
+            self.start_ts = 0 
+            self.end_ts = 0
+            self.state = 'UNKNOWN'
+            self.reason = 'COULD NOT PARSE SCAN NODE'
+            return
         self.start_ts = int(node.get('starttime'))
         self.end_ts   = int(node.get('endtime'))
         self.state    = node.find('status').get('state')

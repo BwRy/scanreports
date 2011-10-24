@@ -134,14 +134,13 @@ try:
         if opts.group_by_host:
             for out in outputs:
                 out.row(None,label='Hosts',
-                    fields=[r.address.ipdadress]
+                    fields=['%s:%s' % (r.address.ipaddress,r.port)]
                 )
         else:
             for out in outputs:
                 out.row(None,label='Hosts',
-                    fields=['\n'.join([
-                        a.ipaddress \
-                        for a in sorted(nms.pluginid_hostmap[r.pluginID])
+                    fields=['\n'.join([address_port \
+                        for address_port in sorted(nms.pluginid_hostmap[r.pluginID])
                     ])],
                 )
         for k in REPORT_FIELD_ORDER:
